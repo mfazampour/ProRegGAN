@@ -1,0 +1,4 @@
+[submodule "voxelmorph"]
+	path = voxelmorph
+	url = https://github.com/mfazampour/voxelmorph
+	branch = gan_based_reg
