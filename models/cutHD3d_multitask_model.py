@@ -50,12 +50,11 @@ class CUTHD3DMultiTaskModel(CUTHD3dModel, Multitask):
 
         self.loss_names.append('G_adv')
 
-        self.loss_functions = ['backward_G', 'compute_D_loss']
-
         self.add_networks(opt, self.model_names, self.loss_functions, self.gpu_ids)
 
         if self.isTrain:
             self.add_optimizers(self.optimizers)
+            self.loss_functions = ['backward_G', 'compute_D_loss']
 
     def set_input(self, input):
         self.clean_tensors()

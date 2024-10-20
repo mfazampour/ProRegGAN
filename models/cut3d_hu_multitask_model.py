@@ -54,12 +54,11 @@ class CUT3DHuMultiTaskModel(CUT3dModel, Multitask):
 
         self.add_networks(opt, self.model_names, self.loss_functions, self.gpu_ids)
 
-        self.loss_functions = ['backward_G', 'compute_D_loss', 'backward_DefReg_Seg']
-
         self.criterionDefReg = DiceLoss(include_background=False, to_onehot_y=True)
 
         if self.isTrain:
             self.add_optimizers(self.optimizers)
+            self.loss_functions = ['backward_G', 'compute_D_loss', 'backward_DefReg_Seg']
 
     def set_input(self, input):
         self.clean_tensors()

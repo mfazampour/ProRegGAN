@@ -157,7 +157,8 @@ class Pix2PixHDModel(BaseModel):
         self.loss_names = ['G', 'G_GAN_Feat', 'G_GAN', 'D_real', 'D_fake',
                            'D_fake_dn', 'D_real_dn', 'G_GAN_dn', 'G_GAN_Feat_dn']
         self.visual_names = []
-        self.loss_functions = ['backward_G', 'compute_D_loss']
+        if self.isTrain:
+            self.loss_functions = ['backward_G', 'compute_D_loss']
 
     def clean_tensors(self):
         all_members = self.__dict__.keys()

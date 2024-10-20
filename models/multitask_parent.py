@@ -81,6 +81,14 @@ class Multitask:
 
         loss_functions += ['backward_DefReg_Seg', 'compute_landmark_loss']
 
+        self.criterionDefReg = getattr(sys.modules['models.networks'], self.opt.similarity + 'Loss')()
+        self.criterionDefRgl = networks.GradLoss('l2', loss_mult=self.opt.int_downsize)
+        self.first_phase_coeff = 0.0
+
+        self.criterionSeg = networks.DiceLoss()
+        self.criterionSeg_wo_bg = networks.DiceLoss(ignore_index=0)
+        self.transformer = vxm.layers.SpatialTransformer((1, 1, 80, 80, 80))
+
         # extract shape from sampled input
         inshape = opt.inshape
         # device handling
@@ -133,20 +141,15 @@ class Multitask:
 
     def add_optimizers(self, optimizers):
 
-        self.criterionDefReg = getattr(sys.modules['models.networks'], self.opt.similarity + 'Loss')()
-        self.criterionDefRgl = networks.GradLoss('l2', loss_mult=self.opt.int_downsize)
+        # self.criterionDefReg = getattr(sys.modules['models.networks'], self.opt.similarity + 'Loss')()
+        # self.criterionDefRgl = networks.GradLoss('l2', loss_mult=self.opt.int_downsize)
         self.optimizer_DefReg = torch.optim.Adam(self.netDefReg.parameters(), lr=self.opt.lr_Def)
         optimizers.append(self.optimizer_DefReg)
 
-        self.criterionSeg = networks.DiceLoss()
-        self.criterionSeg_wo_bg = networks.DiceLoss(ignore_index=0)
         self.optimizer_Seg = torch.optim.Adam(self.netSeg.parameters(), lr=self.opt.lr_Seg,
                                               betas=(self.opt.beta1, 0.999))
         optimizers.append(self.optimizer_Seg)
-        self.transformer = vxm.layers.SpatialTransformer((1, 1, 80, 80, 80))
         # resize = vxm.layers.ResizeTransform(0.5, 1)
-
-        self.first_phase_coeff = 1
 
         self.first_phase_coeff = 1 if self.opt.epochs_before_reg > 0 else 0
 

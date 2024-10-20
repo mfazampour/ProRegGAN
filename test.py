@@ -40,9 +40,8 @@ from data import create_dataset
 from models import create_model
 from util.visualizer import Visualizer
 from torch.utils.tensorboard import SummaryWriter
-
-
-
+from models.multitask_parent import Multitask
+from models.base_model import BaseModel
 
 
 def main():
@@ -65,14 +64,17 @@ def main():
         print(e)
         print("You are Running on the local Machine")
 
-
     dataset_test = create_dataset(opt, mode='test')
-    dataset_val = create_dataset(opt, mode='validation')  # validation dataset
+    # dataset_val = create_dataset(opt, mode='validation')  # validation dataset
 
     dataset_size = len(dataset_test)  # get the number of images in the dataset.
 
     model = create_model(opt)  # create a model given opt.model and other options
-    model.setup(opt)               # regular setup: load and print networks; create schedulers
+    model.setup(opt)  # regular setup: load and print networks; create schedulers
+
+    if not isinstance(model, Multitask) and not isinstance(model, BaseModel):
+        # raise an error if the model is not a multitask model, test.py is only for multitask models
+        raise ValueError('This script is only for multitask models')
 
     visualizer = Visualizer(opt)  # create a visualizer that display/save images and plots
     opt.visualizer = visualizer
@@ -84,10 +86,10 @@ def main():
     os.makedirs(opt.tensorboard_path, exist_ok=True)
     writer = SummaryWriter(opt.tensorboard_path)
     print('tensorboard started')
-    # start wandb
-    wandb.login(key=opt.wandb_key)
-    wandb.init(project='prostate', config=opt, name=opt.name)
 
+    # Start wandb
+    wandb.login(key=opt.wandb_key)
+    wandb.init(project='prostate', config=vars(opt), name=opt.name)
 
     model.eval()
 
@@ -114,225 +116,34 @@ def main():
             landmarks_beg, landmarks_def = model.get_current_landmark_distances()
             land_beg.append(landmarks_beg.item())
             land_def.append(landmarks_def.item())
-            loss_warped_dice, loss_moving_dice, loss_diff_dice  =model.get_current_dice()
-            dice_dif.append(loss_diff_dice)
-            dice_move.append(loss_moving_dice)
-            dice_warp.append(loss_warped_dice)
-            model.log_tensorboard(writer, None, j, save_gif=False, use_image_name=True, mode='test', epoch=epoch)
+            dice_dif.append(model.loss_diff_dice)
+            dice_move.append(model.loss_moving_dice)
+            dice_warp.append(model.loss_warped_dice)
+            model.log_tensorboard(writer, None, j, save_gif=False, use_image_name=True, mode='test', epoch=0)
+
+            # Log to wandb
+            wandb.log({
+                'test/landmarks_beg': landmarks_beg.item(),
+                'test/landmarks_def': landmarks_def.item(),
+                'test/diff_dice': model.loss_diff_dice,
+                'test/moving_dice': model.loss_moving_dice,
+                'test/warped_dice': model.loss_warped_dice,
+                **{f'test/losses/{key}': losses[key] for key in losses}
+            })
+
         keys = losses.keys()
-
-
-
-if __name__ == '__main__':
-        main()
-
-
-if __name__ == '__main__':
-  #  opt = TestOptions().parse()  # get test options
-    parser = TestOptions()
-    opt = parser.parse()  # get training options
-
-    try:
-        from polyaxon_helper import (
-            get_outputs_path,
-            get_data_paths,
-        )
-
-        base_path = get_data_paths()
-        print("You are running on the cluster :)")
-        opt.dataroot = base_path['data1'] + opt.dataroot
-        opt.checkpoints_dir = get_outputs_path()
-        opt.display_id = -1  # no visdom available on the cluster
-        parser.print_options(opt)
-    except Exception as e:
-        print(e)
-        print("You are Running on the local Machine")
-
-    dataset_test = create_dataset(opt, mode='test')
-    dataset_val = create_dataset(opt, mode='validation')  # validation dataset
-
-    dataset_size = len(dataset_test)  # get the number of images in the dataset.
-
-    model = create_model(opt)  # create a model given opt.model and other options
-    model.setup(opt)               # regular setup: load and print networks; create schedulers
-
-    print('The number of test images = %d' % dataset_size)
-
-    visualizer = Visualizer(opt)  # create a visualizer that display/save images and plots
-    opt.visualizer = visualizer
-
-    opt.serial_batches = True  # disable data shuffling; comment this line if results on randomly chosen images are needed.
-
-    times = []
-    opt.tensorboard_path = os.path.join(opt.checkpoints_dir, opt.name)
-    os.makedirs(opt.tensorboard_path, exist_ok=True)
-    writer = SummaryWriter(opt.tensorboard_path)
-    # create a website
-
-    # test with eval mode. This only affects layers like batchnorm and dropout.
-    # For [pix2pix]: we use batchnorm and dropout in the original pix2pix. You can experiment it with and without eval() mode.
-    # For [CycleGAN]: It should not affect CycleGAN as CycleGAN uses instancenorm without dropout.
-    if opt.eval:
-        model.eval()
-    print('evaluating model on labeled data')
-    losses_total = []
-    keys = []
-    loss_aggregate = {}
-    land_rig = []
-    land_def = []
-    land_beg = []
-    dice_dif = []
-    dice_move = []
-    dice_warp = []
-
-    for j, (test_data) in enumerate(dataset_test):
-        model.eval()  # change networks to eval mode
-        with torch.no_grad():
-            model.set_input(test_data)  # unpack data from data loader
-            model.forward()  # run inference
-            model.calculate_loss_values()  # get the loss values
-            model.compute_visuals()
-            losses = model.get_current_losses()
-            losses_total.append(losses)
-            model.get_current_visuals()
-            landmarks_beg, landmarks_def = model.get_current_landmark_distances()
-            land_beg.append(landmarks_beg.item())
-            land_def.append(landmarks_def.item())
-            loss_warped_dice, loss_moving_dice, loss_diff_dice  =model.get_current_dice()
-            dice_dif.append(loss_diff_dice)
-            dice_move.append(loss_moving_dice)
-            dice_warp.append(loss_warped_dice)
-            model.log_tensorboard(writer, None, j, save_gif=False, use_image_name=True, mode='test', epoch=epoch)
-        keys = losses.keys()
-
-    with open(opt.checkpoints_dir + "/" + opt.model + "_" + 'test_landmarks_def' + '.csv', 'w',
-              newline='') as csvfile:
-        writer_def = csv.writer(csvfile)
-        writer_def.writerow(map(lambda x: [x], land_def))
-
-    with open(opt.checkpoints_dir + "/" + opt.model + "_" + 'test_landmarks_rigid' + '.csv', 'w',
-              newline='') as csvfile:
-        writer_rig = csv.writer(csvfile)
-        writer_rig.writerow(map(lambda x: [x], land_rig))
-
-    with open(opt.checkpoints_dir + "/" + opt.model + "_" + 'test_landmarks_beg' + '.csv', 'w',
-              newline='') as csvfile:
-        writer_beg = csv.writer(csvfile)
-        writer_beg.writerow(map(lambda x: [x], land_beg))
-
-    with open(opt.checkpoints_dir + "/" + opt.model + "_" + 'test_dice_dif' + '.csv', 'w',
-              newline='') as csvfile:
-        writer_beg = csv.writer(csvfile)
-        writer_beg.writerow(map(lambda x: [x], dice_dif))
-    with open(opt.checkpoints_dir + "/" + opt.model + "_" + 'test_dice_move' + '.csv', 'w',
-              newline='') as csvfile:
-        writer_beg = csv.writer(csvfile)
-        writer_beg.writerow(map(lambda x: [x], dice_move))
-    with open(opt.checkpoints_dir + "/" + opt.model + "_" + 'test_dice_warp' + '.csv', 'w',
-              newline='') as csvfile:
-        writer_beg = csv.writer(csvfile)
-        writer_beg.writerow(map(lambda x: [x], dice_warp))
 
     for key in keys:
         loss_aggregate[key] = np.mean([losses[key] for losses in losses_total])
     for key in loss_aggregate:
-        writer.add_scalar(f'test-losses/{key}', scalar_value=loss_aggregate[key], global_step=1)
+        writer.add_scalar(f'avg-losses/{key}', scalar_value=loss_aggregate[key], global_step=1)
+        # Log aggregated loss to wandb
+        wandb.log({f'avg-losses/{key}': loss_aggregate[key]})
 
-        for j, (test_data) in enumerate(dataset_test):
-            model.eval()  # change networks to eval mode
-            with torch.no_grad():
-                model.set_input(test_data)  # unpack data from data loader
-                model.forward()  # run inference
-                model.calculate_loss_values()  # get the loss values
-                model.compute_visuals()
-                losses = model.get_current_losses()
-                losses_total.append(losses)
-                model.get_current_visuals()
-                landmarks_beg, landmarks_def = model.get_current_landmark_distances()
-                land_beg.append(landmarks_beg.item())
-                land_def.append(landmarks_def.item())
-                loss_warped_dice, loss_moving_dice, loss_diff_dice = model.get_current_dice()
-                dice_dif.append(loss_diff_dice)
-                dice_move.append(loss_moving_dice)
-                dice_warp.append(loss_warped_dice)
-                model.log_tensorboard(writer, None, j, save_gif=False, use_image_name=True, mode='test', epoch=epoch)
-            keys = losses.keys()
-
-        with open(opt.checkpoints_dir + "/" + opt.model + "_" + 'test_landmarks_def' + '.csv', 'w',
-                  newline='') as csvfile:
-            writer_def = csv.writer(csvfile)
-            writer_def.writerow(map(lambda x: [x], land_def))
-
-        with open(opt.checkpoints_dir + "/" + opt.model + "_" + 'test_landmarks_rigid' + '.csv', 'w',
-                  newline='') as csvfile:
-            writer_rig = csv.writer(csvfile)
-            writer_rig.writerow(map(lambda x: [x], land_rig))
-
-        with open(opt.checkpoints_dir + "/" + opt.model + "_" + 'test_landmarks_beg' + '.csv', 'w',
-                  newline='') as csvfile:
-            writer_beg = csv.writer(csvfile)
-            writer_beg.writerow(map(lambda x: [x], land_beg))
-
-        with open(opt.checkpoints_dir + "/" + opt.model + "_" + 'test_dice_dif' + '.csv', 'w',
-                  newline='') as csvfile:
-            writer_beg = csv.writer(csvfile)
-            writer_beg.writerow(map(lambda x: [x], dice_dif))
-        with open(opt.checkpoints_dir + "/" + opt.model + "_" + 'test_dice_move' + '.csv', 'w',
-                  newline='') as csvfile:
-            writer_beg = csv.writer(csvfile)
-            writer_beg.writerow(map(lambda x: [x], dice_move))
-        with open(opt.checkpoints_dir + "/" + opt.model + "_" + 'test_dice_warp' + '.csv', 'w',
-                  newline='') as csvfile:
-            writer_beg = csv.writer(csvfile)
-            writer_beg.writerow(map(lambda x: [x], dice_warp))
+    # Finish wandb run
+    wandb.finish()
 
 
+if __name__ == '__main__':
+    main()
 
-
-        for j, (test_data) in enumerate(dataset_val):
-            model.eval()  # change networks to eval mode
-            with torch.no_grad():
-                model.set_input(test_data)  # unpack data from data loader
-                model.forward()  # run inference
-                model.calculate_loss_values()  # get the loss values
-                model.compute_visuals()
-                losses = model.get_current_losses()
-                losses_total.append(losses)
-                model.get_current_visuals()
-                landmarks_beg, landmarks_def = model.get_current_landmark_distances()
-                land_beg.append(landmarks_beg.item())
-                land_def.append(landmarks_def.item())
-                loss_warped_dice, loss_moving_dice, loss_diff_dice = model.get_current_dice()
-                dice_dif.append(loss_diff_dice)
-                dice_move.append(loss_moving_dice)
-                dice_warp.append(loss_warped_dice)
-                model.log_tensorboard(writer, None, j, save_gif=False, use_image_name=True, mode='val', epoch=epoch)
-            keys = losses.keys()
-
-        with open(opt.checkpoints_dir + "/" + opt.model + "_" + 'val_landmarks_def' + '.csv', 'w',
-                  newline='') as csvfile:
-            writer_def = csv.writer(csvfile)
-            writer_def.writerow(map(lambda x: [x], land_def))
-
-        with open(opt.checkpoints_dir + "/" + opt.model + "_" + 'val_landmarks_rigid' + '.csv', 'w',
-                  newline='') as csvfile:
-            writer_rig = csv.writer(csvfile)
-            writer_rig.writerow(map(lambda x: [x], land_rig))
-
-        with open(opt.checkpoints_dir + "/" + opt.model + "_" + 'val_landmarks_beg' + '.csv', 'w',
-                  newline='') as csvfile:
-            writer_beg = csv.writer(csvfile)
-            writer_beg.writerow(map(lambda x: [x], land_beg))
-
-        with open(opt.checkpoints_dir + "/" + opt.model + "_" + 'val_dice_dif' + '.csv', 'w',
-                  newline='') as csvfile:
-            writer_beg = csv.writer(csvfile)
-            writer_beg.writerow(map(lambda x: [x], dice_dif))
-        with open(opt.checkpoints_dir + "/" + opt.model + "_" + 'val_dice_move' + '.csv', 'w',
-                  newline='') as csvfile:
-            writer_beg = csv.writer(csvfile)
-            writer_beg.writerow(map(lambda x: [x], dice_move))
-        with open(opt.checkpoints_dir + "/" + opt.model + "_" + 'val_dice_warp' + '.csv', 'w',
-                  newline='') as csvfile:
-            writer_beg = csv.writer(csvfile)
-            writer_beg.writerow(map(lambda x: [x], dice_warp))

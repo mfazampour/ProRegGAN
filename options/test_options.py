@@ -20,5 +20,7 @@ class TestOptions(BaseOptions):
         parser.set_defaults(model='test')
         # To avoid cropping, the load_size should be the same as crop_size
         parser.set_defaults(load_size=parser.get_default('crop_size'))
+        parser.add_argument('--display_env', type=str, default='main', help='visdom display environment name (default is "main")')
+        parser.add_argument('--display_port', type=int, default=8097, help='visdom port of the web display')
         self.isTrain = False
         return parser

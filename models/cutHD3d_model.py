@@ -98,8 +98,7 @@ class CUTHD3dModel(BaseModel):
 
         # specify the training losses you want to print out.
         # The training/test scripts will call <BaseModel.get_current_losses>
-        self.loss_names = ['G_GAN', 'D_real', 'D_fake', 'G', 'NCE', 'G_GAN_Feat',
-                           'D_fake_dn', 'D_real_dn', 'G_GAN_dn', 'G_GAN_Feat_dn']
+
 
         self.visual_names = ['real_A_center_sag', 'real_A_center_cor', 'real_A_center_axi']
         self.visual_names += ['fake_B_center_sag', 'fake_B_center_cor', 'fake_B_center_axi']
@@ -109,13 +108,14 @@ class CUTHD3dModel(BaseModel):
             self.loss_names += ['NCE_Y']
             self.visual_names += ['idt_B_center_sag', 'idt_B_center_cor', 'idt_B_center_axi']
 
-
-        self.loss_functions = ['compute_G_loss', 'compute_D_loss']
-
         if self.isTrain:
             self.model_names = ['G', 'F', 'D', 'D_DN', 'F_DN', 'D_N']
+            self.loss_functions = ['compute_G_loss', 'compute_D_loss']
+            self.loss_names = ['G_GAN', 'D_real', 'D_fake', 'G', 'NCE', 'G_GAN_Feat',
+                               'D_fake_dn', 'D_real_dn', 'G_GAN_dn', 'G_GAN_Feat_dn']
         else:  # during test time, only load G
             self.model_names = ['G']
+            self.loss_functions = []
 
         # HD
         # self.input_nc = opt.input_nc
